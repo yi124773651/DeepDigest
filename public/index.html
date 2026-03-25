@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepDigest</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root,[data-theme="dark"]{--bg:#0f1117;--surface:#1a1d27;--surface2:#242837;--border:#2e3348;--text:#e0e0e6;--text2:#9196a8;--accent:#6c8cff;--accent2:#4a6bff;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;--radius:8px;--shadow:rgba(0,0,0,.3);--modal-bg:rgba(0,0,0,.6);--strong:#fff}
+[data-theme="light"]{--bg:#f5f6fa;--surface:#ffffff;--surface2:#eef0f5;--border:#d8dbe5;--text:#1a1d27;--text2:#5f6578;--accent:#4a6bff;--accent2:#3451e0;--green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--shadow:rgba(0,0,0,.08);--modal-bg:rgba(0,0,0,.3);--strong:#000}
+@media(prefers-color-scheme:light){[data-theme="auto"]{--bg:#f5f6fa;--surface:#ffffff;--surface2:#eef0f5;--border:#d8dbe5;--text:#1a1d27;--text2:#5f6578;--accent:#4a6bff;--accent2:#3451e0;--green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--shadow:rgba(0,0,0,.08);--modal-bg:rgba(0,0,0,.3);--strong:#000}}
+@media(prefers-color-scheme:dark){[data-theme="auto"]{--bg:#0f1117;--surface:#1a1d27;--surface2:#242837;--border:#2e3348;--text:#e0e0e6;--text2:#9196a8;--accent:#6c8cff;--accent2:#4a6bff;--green:#4ade80;--red:#f87171;--yellow:#fbbf24;--shadow:rgba(0,0,0,.3);--modal-bg:rgba(0,0,0,.6);--strong:#fff}}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:20px}
+h1{font-size:1.5rem;font-weight:700;margin-bottom:4px}
+.subtitle{color:var(--text2);font-size:.85rem;margin-bottom:24px}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab{padding:10px 20px;cursor:pointer;color:var(--text2);font-size:.9rem;border-bottom:2px solid transparent;transition:.2s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab .badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:9px;background:var(--accent);color:#fff;font-size:.7rem;font-weight:700;margin-left:6px;padding:0 5px}
+.panel{display:none}
+.panel.active{display:block}
+label{display:block;font-size:.8rem;color:var(--text2);margin-bottom:4px;margin-top:12px}
+input,select{width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:.9rem;outline:none}
+input:focus,select:focus{border-color:var(--accent)}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 24px;border:none;border-radius:var(--radius);font-size:.9rem;cursor:pointer;font-weight:600;transition:.2s}
+.btn-primary{background:var(--accent);color:#fff;margin-top:20px;width:100%}
+.btn-primary:hover{background:var(--accent2)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-sm{padding:6px 14px;font-size:.8rem}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:transparent;border:1px solid var(--red);color:var(--red)}
+.btn-danger:hover{background:var(--red);color:#fff}
+.steps{display:flex;gap:0;margin-bottom:16px;overflow-x:auto}
+.step-item{flex:1;text-align:center;padding:8px 4px;font-size:.75rem;color:var(--text2);position:relative;white-space:nowrap}
+.step-item::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--border);border-radius:2px}
+.step-item.done::after{background:var(--green)}
+.step-item.active::after{background:var(--accent);animation:pulse 1.5s infinite}
+.step-item.active{color:var(--accent)}
+.step-item.done{color:var(--green)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.progress-wrap{height:6px;background:var(--surface2);border-radius:3px;margin-bottom:12px;overflow:hidden}
+.progress-bar{height:100%;background:var(--accent);border-radius:3px;transition:width .3s}
+.log-area{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;max-height:200px;overflow-y:auto;font-family:"Cascadia Code",Consolas,monospace;font-size:.8rem;color:var(--text2);white-space:pre-wrap;word-break:break-all}
+.log-area .err{color:var(--red)}
+.log-area .ok{color:var(--green)}
+.result-actions{display:flex;gap:8px;margin-bottom:12px}
+.md-body{border-radius:var(--radius);overflow-x:auto;font-size:.9rem;line-height:1.8}
+.md-body h1{font-size:1.4rem;margin:20px 0 8px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.md-body h2{font-size:1.15rem;margin:18px 0 6px;color:var(--accent)}
+.md-body h3{font-size:1rem;margin:14px 0 4px}
+.md-body p{margin:6px 0}
+.md-body a{color:var(--accent);text-decoration:none}
+.md-body a:hover{text-decoration:underline}
+.md-body blockquote{border-left:3px solid var(--accent);padding-left:12px;color:var(--text2);margin:8px 0}
+.md-body code{background:var(--surface2);padding:2px 5px;border-radius:3px;font-size:.85em}
+.md-body pre{background:var(--surface2);padding:12px;border-radius:var(--radius);overflow-x:auto;margin:8px 0}
+.md-body pre code{background:none;padding:0}
+.md-body table{width:100%;border-collapse:collapse;margin:8px 0}
+.md-body th,.md-body td{border:1px solid var(--border);padding:6px 10px;text-align:left}
+.md-body th{background:var(--surface2)}
+.md-body strong{color:var(--strong)}
+.md-body hr{border:none;border-top:1px solid var(--border);margin:16px 0}
+.md-body img{max-width:100%}
+.md-body details{margin:8px 0}
+.md-body summary{cursor:pointer;color:var(--accent)}
+/* Cards */
+.digest-highlights{background:linear-gradient(135deg,var(--surface),var(--surface2));border:1px solid var(--accent);border-radius:12px;padding:20px 24px;margin-bottom:24px;line-height:1.8;font-size:.95rem}
+.digest-highlights .hl-title{font-size:1rem;font-weight:700;color:var(--accent);margin-bottom:8px}
+.digest-highlights .hl-text{color:var(--text);white-space:pre-line}
+.category-section{margin-bottom:28px}
+.category-header{display:flex;align-items:center;gap:8px;font-size:1.1rem;font-weight:700;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid var(--border)}
+.article-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:14px;transition:box-shadow .2s,border-color .2s}
+.article-card:hover{box-shadow:0 4px 20px var(--shadow);border-color:rgba(108,140,255,.3)}
+.article-card.wildcard{border:2px solid transparent;background-clip:padding-box;position:relative}
+.article-card.wildcard::before{content:'';position:absolute;inset:-2px;border-radius:14px;padding:2px;background:linear-gradient(135deg,#6c8cff,#a78bfa,#fbbf24);-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+.card-title{font-size:1rem;font-weight:700;line-height:1.4;flex:1}
+.card-title a{color:var(--text);text-decoration:none}
+.card-title a:hover{color:var(--accent)}
+.card-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:.8rem;color:var(--text2);margin-bottom:10px}
+.category-tag{display:inline-block;padding:2px 10px;border-radius:12px;font-size:.75rem;font-weight:600;color:#fff}
+.score-badge{display:inline-flex;align-items:center;justify-content:center;min-width:40px;height:26px;border-radius:13px;font-size:.8rem;font-weight:700;color:#fff;padding:0 8px;flex-shrink:0}
+.score-group{display:inline-flex;gap:3px;flex-shrink:0}
+.score-dim{display:inline-flex;align-items:center;gap:2px;font-size:.7rem;font-weight:600;color:#fff;padding:2px 6px;border-radius:10px;height:22px}
+.score-dim .dim-label{opacity:.8;font-weight:400}
+.score-r{background:#6c8cff}
+.score-q{background:#4ade80}
+.score-t{background:#fbbf24;color:#000}
+.score-green{background:#16a34a}
+.score-yellow{background:#ca8a04}
+.score-red{background:#dc2626}
+.wildcard-label{font-size:.75rem;color:#a78bfa;font-weight:600}
+.card-oneliner{font-weight:600;font-size:.95rem;line-height:1.6;margin-bottom:10px;color:var(--text);border-left:3px solid var(--accent);padding-left:12px}
+/* Card action buttons */
+.card-actions{display:flex;gap:8px;margin-top:10px;align-items:center}
+.card-detail-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;background:var(--accent);color:#fff;border:none;transition:.2s}
+.card-detail-btn:hover{background:var(--accent2);transform:translateY(-1px)}
+.card-fav-btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:.82rem;font-weight:500;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text2);transition:.2s}
+.card-fav-btn:hover{border-color:var(--yellow);color:var(--yellow)}
+.card-fav-btn.faved{border-color:var(--yellow);color:var(--yellow);background:rgba(251,191,36,.1)}
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:var(--modal-bg);z-index:100;justify-content:center;align-items:flex-start;padding:40px 20px;overflow-y:auto;backdrop-filter:blur(4px)}
+.modal-overlay.active{display:flex}
+.modal-panel{background:var(--bg);border:1px solid var(--border);border-radius:16px;max-width:750px;width:100%;max-height:calc(100vh - 80px);overflow-y:auto;padding:28px 32px;position:relative;animation:modalIn .25s ease-out;box-shadow:0 20px 60px var(--shadow);scrollbar-width:none;-ms-overflow-style:none}
+.modal-panel::-webkit-scrollbar{display:none}
+@keyframes modalIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.modal-close{position:sticky;top:0;float:right;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:1rem;cursor:pointer;padding:4px 10px;z-index:1;transition:.2s}
+.modal-close:hover{color:var(--text);border-color:var(--accent)}
+.modal-title{font-size:1.15rem;font-weight:700;margin-bottom:6px;padding-right:40px;line-height:1.4}
+.modal-title a{color:var(--text);text-decoration:none}
+.modal-title a:hover{color:var(--accent)}
+.modal-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:.8rem;color:var(--text2);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.modal-body{font-size:.92rem;line-height:1.9;color:var(--text)}
+.modal-body strong{color:var(--accent);font-size:.95rem;display:inline-block;margin-top:14px;margin-bottom:4px}
+.modal-body ul{margin:6px 0 12px 18px;padding:0}
+.modal-body li{margin:5px 0;line-height:1.7}
+.modal-body li strong{font-size:.92rem;margin:0;display:inline}
+.modal-body p{margin:8px 0}
+.modal-body code{background:var(--surface2);padding:2px 5px;border-radius:3px;font-size:.85em}
+.modal-reason{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-style:italic;font-size:.85rem;color:var(--text2)}
+.modal-actions{display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
+.card-reason{font-style:italic;font-size:.82rem;color:var(--text2);margin-top:10px;padding-left:12px;border-left:2px solid var(--yellow)}
+.card-keywords{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
+.card-keywords span{font-size:.75rem;color:var(--text2);background:var(--surface2);padding:2px 8px;border-radius:8px}
+.card-source-warn{font-size:.75rem;color:var(--yellow);margin-top:6px}
+/* Theme switcher */
+.header-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.theme-switch{display:flex;gap:2px;background:var(--surface2);border-radius:8px;padding:2px;border:1px solid var(--border)}
+.theme-btn{background:none;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:.8rem;color:var(--text2);transition:.2s}
+.theme-btn:hover{color:var(--text)}
+.theme-btn.active{background:var(--accent);color:#fff}
+/* Favorites */
+.fav-tabs{display:flex;gap:0;margin-bottom:16px}
+.fav-tab{padding:6px 16px;cursor:pointer;font-size:.85rem;color:var(--text2);border-bottom:2px solid transparent;transition:.2s}
+.fav-tab:hover{color:var(--text)}
+.fav-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.fav-item{display:flex;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:8px;transition:.2s;align-items:flex-start}
+.fav-item:hover{border-color:rgba(108,140,255,.3)}
+.fav-item.read{opacity:.5}
+.fav-content{flex:1;min-width:0}
+.fav-title{font-size:.9rem;font-weight:600;margin-bottom:4px;cursor:pointer;color:var(--text)}
+.fav-title:hover{color:var(--accent)}
+.fav-oneliner{font-size:.82rem;color:var(--text2);margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fav-meta{font-size:.75rem;color:var(--text2)}
+.fav-actions{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+/* History */
+.history-list{display:flex;flex-direction:column;gap:8px}
+.history-item{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px}
+.history-item .meta{font-size:.85rem}
+.history-item .meta span{color:var(--text2);font-size:.8rem}
+.history-item .actions{display:flex;gap:6px}
+.empty{color:var(--text2);text-align:center;padding:40px;font-size:.9rem}
+.toast{position:fixed;top:20px;right:20px;padding:10px 20px;border-radius:var(--radius);font-size:.85rem;z-index:999;animation:fadeIn .2s}
+.toast-ok{background:var(--green);color:#000}
+.toast-err{background:var(--red);color:#fff}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header-row">
+    <h1>DeepDigest</h1>
+    <div class="theme-switch">
+      <button class="theme-btn" data-theme="light" onclick="setTheme('light')" title="浅色">☀️</button>
+      <button class="theme-btn" data-theme="dark" onclick="setTheme('dark')" title="深色">🌙</button>
+      <button class="theme-btn" data-theme="auto" onclick="setTheme('auto')" title="跟随系统">💻</button>
+    </div>
+  </div>
+  <p class="subtitle">90 top tech blogs, AI-curated daily</p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="run">Run</div>
+    <div class="tab" data-tab="result">Result</div>
+    <div class="tab" data-tab="favorites">Favorites <span class="badge" id="favBadge" style="display:none">0</span></div>
+    <div class="tab" data-tab="history">History</div>
+  </div>
+
+  <div class="panel active" id="panel-run">
+    <label>API Key</label>
+    <input type="password" id="apiKey" placeholder="sk-...">
+    <label>Base URL</label>
+    <input type="text" id="baseUrl" placeholder="https://api.openai.com">
+    <label>Model</label>
+    <input type="text" id="modelName" placeholder="gpt-4o-mini">
+    <div class="row">
+      <div><label>Time Range (hours)</label><input type="number" id="hours" value="48" min="1"></div>
+      <div><label>Top N</label><input type="number" id="topN" value="15" min="1" max="50"></div>
+      <div><label>Language</label><select id="lang"><option value="zh">Chinese</option><option value="en">English</option></select></div>
+    </div>
+    <button class="btn btn-primary" id="btnRun" onclick="startRun()">Run Digest</button>
+    <div id="progressArea" style="display:none;margin-top:20px">
+      <div class="steps" id="stepsBar"></div>
+      <div class="progress-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+      <div class="log-area" id="logArea"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-result">
+    <div class="result-actions">
+      <button class="btn btn-sm btn-outline" onclick="copyResult()">Copy Markdown</button>
+      <button class="btn btn-sm btn-outline" onclick="downloadResult()">Download .md</button>
+    </div>
+    <div class="md-body" id="mdBody"><p class="empty">No result yet. Run a digest first.</p></div>
+  </div>
+
+  <div class="panel" id="panel-favorites">
+    <div class="fav-tabs">
+      <div class="fav-tab active" onclick="renderFavorites('unread')">待读</div>
+      <div class="fav-tab" onclick="renderFavorites('read')">已读</div>
+    </div>
+    <div id="favList"><p class="empty">Loading...</p></div>
+  </div>
+
+  <div class="panel" id="panel-history">
+    <div class="history-list" id="historyList"><p class="empty">Loading...</p></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-panel">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script>
+// Theme
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem('theme', theme);
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+}
+(function() { setTheme(localStorage.getItem('theme') || 'auto'); })();
+
+// State
+let currentMarkdown = '';
+let currentId = '';
+let currentArticles = null;
+let displayArticles = [];
+let favoritesCache = [];
+
+const TOTAL_STEPS = 6;
+const STEP_NAMES = ['', 'Fetch RSS', 'Filter', 'AI Score', 'Scrape & Summarize', 'Highlights', 'Report'];
+const CATEGORY_COLORS = {'ai-ml':'#6c8cff','security':'#f87171','engineering':'#4ade80','tools':'#a78bfa','opinion':'#fbbf24','other':'#9196a8'};
+const CATEGORY_LABELS = {'ai-ml':'🤖 AI / ML','security':'🔒 安全','engineering':'⚙️ 工程','tools':'🛠 工具 / 开源','opinion':'💡 观点 / 杂谈','other':'📝 其他'};
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'history') loadHistory();
+    if (tab.dataset.tab === 'favorites') loadFavorites();
+  });
+});
+
+// Load config
+(async () => {
+  try {
+    const r = await fetch('/api/config');
+    const c = await r.json();
+    if (c.apiKey) document.getElementById('apiKey').value = c.apiKey;
+    if (c.baseUrl) document.getElementById('baseUrl').value = c.baseUrl;
+    if (c.modelName) document.getElementById('modelName').value = c.modelName;
+    if (c.hours) document.getElementById('hours').value = c.hours;
+    if (c.topN) document.getElementById('topN').value = c.topN;
+    if (c.lang) document.getElementById('lang').value = c.lang;
+  } catch {}
+  loadFavoritesBadge();
+})();
+
+function getConfig() {
+  return {
+    apiKey: document.getElementById('apiKey').value.trim(),
+    baseUrl: document.getElementById('baseUrl').value.trim() || 'https://api.openai.com',
+    modelName: document.getElementById('modelName').value.trim() || 'gpt-4o-mini',
+    hours: parseInt(document.getElementById('hours').value) || 48,
+    topN: parseInt(document.getElementById('topN').value) || 15,
+    lang: document.getElementById('lang').value,
+  };
+}
+
+function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderSummaryMd(md) {
+  if (!md) return '';
+  const lines = String(md).split('\n');
+  let html = '', inList = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) { if (inList) { html += '</ul>'; inList = false; } continue; }
+    if (t.startsWith('- ')) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${inlineMd(esc(t.slice(2)))}</li>`;
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${inlineMd(esc(t))}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+function inlineMd(s) {
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent)">$1</a>');
+  return s;
+}
+
+function scoreColor(score) { return score >= 8 ? 'score-green' : score >= 6 ? 'score-yellow' : 'score-red'; }
+
+function renderScoreDims(a) {
+  const bd = a.scoreBreakdown;
+  if (!bd) { const s = typeof a.score === 'number' ? a.score : 0; return `<span class="score-badge ${scoreColor(s)}">${s.toFixed(1)}</span>`; }
+  return `<span class="score-group"><span class="score-dim score-r"><span class="dim-label">R</span>${bd.relevance}</span><span class="score-dim score-q"><span class="dim-label">Q</span>${bd.quality}</span><span class="score-dim score-t"><span class="dim-label">T</span>${bd.timeliness}</span></span>`;
+}
+
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const m = Math.floor(diff/60000), h = Math.floor(diff/3600000), d = Math.floor(diff/86400000);
+  if (m < 60) return m + ' 分钟前';
+  if (h < 24) return h + ' 小时前';
+  if (d < 7) return d + ' 天前';
+  return new Date(dateStr).toISOString().slice(0,10);
+}
+
+function isFaved(link) { return favoritesCache.some(f => f.article?.link === link); }
+
+// ============ Favorites ============
+async function loadFavoritesBadge() {
+  try {
+    const r = await fetch('/api/favorites');
+    favoritesCache = await r.json();
+    const unread = favoritesCache.filter(f => !f.read).length;
+    const badge = document.getElementById('favBadge');
+    if (unread > 0) { badge.textContent = unread; badge.style.display = ''; }
+    else { badge.style.display = 'none'; }
+  } catch { favoritesCache = []; }
+}
+
+async function loadFavorites() {
+  await loadFavoritesBadge();
+  renderFavorites('unread');
+}
+
+function renderFavorites(filter) {
+  document.querySelectorAll('.fav-tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === (filter === 'unread' ? '待读' : '已读')));
+  const list = document.getElementById('favList');
+  const items = favoritesCache.filter(f => filter === 'unread' ? !f.read : f.read);
+  if (items.length === 0) {
+    list.innerHTML = `<p class="empty">${filter === 'unread' ? '没有待读文章' : '没有已读文章'}</p>`;
+    return;
+  }
+  list.innerHTML = items.map(f => {
+    const a = f.article || {};
+    const readClass = f.read ? ' read' : '';
+    return `<div class="fav-item${readClass}">
+      <div class="fav-content">
+        <div class="fav-title" onclick="openFavDetail('${f.id}')">${esc(a.titleZh || a.title || 'Untitled')}</div>
+        <div class="fav-oneliner">${esc(a.oneLiner || '')}</div>
+        <div class="fav-meta">${esc(a.sourceName || '')} · ${timeAgo(f.addedAt)}</div>
+      </div>
+      <div class="fav-actions">
+        <button class="btn btn-sm btn-outline" onclick="openFavDetail('${f.id}')" title="查看详情">📖</button>
+        <button class="btn btn-sm btn-outline" onclick="toggleFavRead('${f.id}')" title="${f.read ? '标记未读' : '标记已读'}">${f.read ? '↩️' : '✓'}</button>
+        <button class="btn btn-sm btn-danger" onclick="removeFav('${f.id}')" title="移除">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addFavorite(article) {
+  const link = article?.link;
+  if (!link) return;
+  if (isFaved(link)) { toast('已在收藏夹中'); return; }
+  await fetch('/api/favorites', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ article }) });
+  await loadFavoritesBadge();
+  toast('已收藏');
+}
+
+async function toggleFavRead(id) {
+  const item = favoritesCache.find(f => f.id === id);
+  if (!item) return;
+  await fetch('/api/favorites/' + id, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ read: !item.read }) });
+  await loadFavorites();
+}
+
+async function removeFav(id) {
+  await fetch('/api/favorites/' + id, { method:'DELETE' });
+  await loadFavorites();
+  toast('已移除');
+}
+
+function openFavDetail(id) {
+  const fav = favoritesCache.find(f => f.id === id);
+  if (!fav) return;
+  openDetailForArticle(fav.article, fav.id);
+}
+
+// ============ Modal ============
+function openDetailForArticle(a, favId) {
+  if (!a) return;
+  let html = '';
+  html += `<div class="modal-title"><a href="${esc(a.link)}" target="_blank" rel="noopener">${esc(a.titleZh || a.title)}</a></div>`;
+  html += `<div class="modal-meta">`;
+  html += `<span class="category-tag" style="background:${CATEGORY_COLORS[a.category] || '#666'}">${esc(a.category || '')}</span>`;
+  html += `<span>${esc(a.sourceName || '')}</span>`;
+  if (a.pubDate) html += `<span>${timeAgo(a.pubDate)}</span>`;
+  html += renderScoreDims(a);
+  if (a.isWildcard) html += `<span class="wildcard-label">🌍 跨界发现</span>`;
+  if (a.contentSource === 'rss') html += `<span style="color:var(--yellow)">⚠️ RSS摘要</span>`;
+  html += `</div>`;
+  html += `<div class="modal-body">${renderSummaryMd(a.summary)}</div>`;
+  if (a.reason) html += `<div class="modal-reason">💡 ${esc(a.reason)}</div>`;
+  if (a.keywords && a.keywords.length > 0) html += `<div class="card-keywords" style="margin-top:12px">${a.keywords.map(k => `<span>${esc(k)}</span>`).join('')}</div>`;
+  // Actions
+  html += `<div class="modal-actions">`;
+  html += `<a href="${esc(a.link)}" target="_blank" rel="noopener" class="card-detail-btn" style="text-decoration:none">🔗 打开原文</a>`;
+  const faved = isFaved(a.link);
+  html += `<button class="card-fav-btn${faved ? ' faved' : ''}" onclick="modalToggleFav(this)" data-link="${esc(a.link)}" data-article='${esc(JSON.stringify(a))}'>${faved ? '★ 已收藏' : '☆ 收藏'}</button>`;
+  if (favId) {
+    const item = favoritesCache.find(f => f.id === favId);
+    if (item && !item.read) {
+      html += `<button class="btn btn-sm btn-outline" onclick="toggleFavRead('${favId}');closeModal()">✓ 标记已读</button>`;
+    }
+  }
+  html += `</div>`;
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('detailModal').classList.add('active');
+  document.querySelector('.modal-panel').scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+}
+
+function openDetail(idx) { openDetailForArticle(displayArticles[idx]); }
+
+async function modalToggleFav(btn) {
+  const article = JSON.parse(btn.dataset.article);
+  if (isFaved(article.link)) {
+    const fav = favoritesCache.find(f => f.article?.link === article.link);
+    if (fav) { await removeFav(fav.id); btn.classList.remove('faved'); btn.textContent = '☆ 收藏'; }
+  } else {
+    await addFavorite(article);
+    btn.classList.add('faved'); btn.textContent = '★ 已收藏';
+  }
+}
+
+function closeModal() {
+  document.getElementById('detailModal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ============ Card Renderer ============
+function renderCards(articles, highlights) {
+  const body = document.getElementById('mdBody');
+  let html = '';
+  displayArticles = [];
+
+  if (highlights) html += `<div class="digest-highlights"><div class="hl-title">📝 今日看点</div><div class="hl-text">${esc(highlights)}</div></div>`;
+
+  const groups = {};
+  for (const a of articles) { if (!groups[a.category]) groups[a.category] = []; groups[a.category].push(a); }
+  const sortedCats = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+
+  let idx = 0;
+  for (const [cat, catArticles] of sortedCats) {
+    html += `<div class="category-section"><div class="category-header">${CATEGORY_LABELS[cat] || cat}</div>`;
+    for (const a of catArticles) {
+      idx++;
+      displayArticles.push(a);
+      const wc = a.isWildcard ? ' wildcard' : '';
+      html += `<div class="article-card${wc}">`;
+      html += `<div class="card-header"><div class="card-title"><a href="${esc(a.link)}" target="_blank" rel="noopener">${idx}. ${esc(a.titleZh || a.title)}</a></div>${renderScoreDims(a)}</div>`;
+      html += `<div class="card-meta"><span class="category-tag" style="background:${CATEGORY_COLORS[a.category] || '#666'}">${esc(a.category)}</span><span>${esc(a.sourceName)}</span>`;
+      if (a.pubDate) html += `<span>${timeAgo(a.pubDate)}</span>`;
+      if (a.isWildcard) html += `<span class="wildcard-label">🌍 跨界发现</span>`;
+      html += `</div>`;
+      if (a.oneLiner) html += `<div class="card-oneliner">${esc(a.oneLiner)}</div>`;
+      // Action buttons
+      html += `<div class="card-actions">`;
+      if (a.summary) html += `<button class="card-detail-btn" onclick="openDetail(${idx-1})">📖 深度分析</button>`;
+      const faved = isFaved(a.link);
+      html += `<button class="card-fav-btn${faved ? ' faved' : ''}" onclick="cardToggleFav(this,${idx-1})">${faved ? '★ 已收藏' : '☆ 收藏'}</button>`;
+      html += `</div>`;
+      if (a.reason) html += `<div class="card-reason">💡 ${esc(a.reason)}</div>`;
+      if (a.keywords && a.keywords.length > 0) html += `<div class="card-keywords">${a.keywords.map(k => `<span>${esc(k)}</span>`).join('')}</div>`;
+      if (a.contentSource === 'rss') html += `<div class="card-source-warn">⚠️ 摘要基于 RSS 摘要生成</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  body.innerHTML = html;
+}
+
+async function cardToggleFav(btn, idx) {
+  const a = displayArticles[idx];
+  if (!a) return;
+  if (isFaved(a.link)) {
+    const fav = favoritesCache.find(f => f.article?.link === a.link);
+    if (fav) { await removeFav(fav.id); btn.classList.remove('faved'); btn.textContent = '☆ 收藏'; }
+  } else {
+    await addFavorite(a);
+    btn.classList.add('faved'); btn.textContent = '★ 已收藏';
+  }
+}
+
+// Markdown fallback
+function renderMarkdown(md) { document.getElementById('mdBody').innerHTML = md2html(md); }
+function md2html(md) {
+  let html = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_, l, c) => `<pre><code class="lang-${l}">${esc(c.trim())}</code></pre>`);
+  html = html.replace(/<details>/g,'<details>').replace(/<\/details>/g,'</details>');
+  html = html.replace(/<summary>(.*?)<\/summary>/g,'<summary>$1</summary>');
+  const lines = html.split('\n'); let out = '', inTable = false;
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (line.includes('<pre>') || line.includes('</pre>')) { out += line + '\n'; continue; }
+    if (line.match(/^### (.+)/)) { out += `<h3>${inlineFormat(line.slice(4))}</h3>\n`; continue; }
+    if (line.match(/^## (.+)/)) { out += `<h2>${inlineFormat(line.slice(3))}</h2>\n`; continue; }
+    if (line.match(/^# (.+)/)) { out += `<h1>${inlineFormat(line.slice(2))}</h1>\n`; continue; }
+    if (line.match(/^-{3,}$/) || line.match(/^\*{3,}$/)) { out += '<hr>\n'; continue; }
+    if (line.includes('|') && line.trim().startsWith('|')) {
+      if (!inTable) { out += '<table>\n'; inTable = true; }
+      if (line.match(/^\|[\s:-]+\|/)) continue;
+      const cells = line.split('|').filter(c => c.trim() !== '');
+      const tag = !out.includes('<tr>') && inTable ? 'th' : 'td';
+      out += '<tr>' + cells.map(c => `<${tag}>${inlineFormat(c.trim())}</${tag}>`).join('') + '</tr>\n'; continue;
+    } else if (inTable) { out += '</table>\n'; inTable = false; }
+    if (line.startsWith('> ')) { out += `<blockquote><p>${inlineFormat(line.slice(2))}</p></blockquote>\n`; continue; }
+    if (line.trim() === '') { out += '\n'; continue; }
+    out += `<p>${inlineFormat(line)}</p>\n`;
+  }
+  if (inTable) out += '</table>\n'; return out;
+}
+function inlineFormat(s) {
+  s = s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g,'<em>$1</em>');
+  s = s.replace(/`([^`]+)`/g,'<code>$1</code>');
+  s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,'<img src="$2" alt="$1">');
+  return s;
+}
+
+// Run
+async function startRun() {
+  const config = getConfig();
+  if (!config.apiKey) { toast('API Key is required', true); return; }
+  fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config) });
+  const btn = document.getElementById('btnRun'); btn.disabled = true; btn.textContent = 'Running...';
+  const area = document.getElementById('progressArea'); area.style.display = 'block';
+  const logArea = document.getElementById('logArea'); logArea.innerHTML = '';
+  const bar = document.getElementById('progressBar'); bar.style.width = '0%';
+  document.getElementById('stepsBar').innerHTML = STEP_NAMES.slice(1).map((n,i) => `<div class="step-item" id="step-${i+1}">${i+1}. ${n}</div>`).join('');
+  let receivedDone = false;
+  try {
+    const resp = await fetch('/api/run', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config) });
+    if (!resp.ok) { const err = await resp.json().catch(()=>({})); addLog('Server error: '+(err.error||resp.statusText),true); toast(err.error||'Server error',true); btn.disabled=false; btn.textContent='Run Digest'; return; }
+    const reader = resp.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true }); const lines = buffer.split('\n\n'); buffer = lines.pop() || '';
+      for (const line of lines) {
+        const m = line.match(/^data:\s*(.+)$/m); if (!m) continue;
+        let evt; try { evt = JSON.parse(m[1]); } catch { continue; }
+        if (evt.type === 'step') {
+          for (let s=1;s<evt.step;s++){const el=document.getElementById('step-'+s);if(el){el.classList.remove('active');el.classList.add('done');}}
+          const el=document.getElementById('step-'+evt.step);if(el)el.classList.add('active');
+          bar.style.width=((evt.step-1)/TOTAL_STEPS*100)+'%'; addLog(`Step ${evt.step}/${TOTAL_STEPS}: ${evt.stepName}`);
+        }
+        if (evt.type==='progress'&&evt.total>0){bar.style.width=(((evt.step-1)/TOTAL_STEPS+(evt.current/evt.total)/TOTAL_STEPS)*100)+'%';}
+        if (evt.type==='log') addLog(evt.message);
+        if (evt.type==='error'){addLog(evt.message,true);toast(evt.message,true);}
+        if (evt.type==='done') {
+          receivedDone=true; bar.style.width='100%';
+          for(let s=1;s<=TOTAL_STEPS;s++){const el=document.getElementById('step-'+s);if(el){el.classList.remove('active');el.classList.add('done');}}
+          currentMarkdown=evt.result.markdown; currentId=evt.result.id;
+          if(evt.result.articles){currentArticles=evt.result.articles;renderCards(evt.result.articles,evt.result.highlights||'');}else{renderMarkdown(currentMarkdown);}
+          addLog('Done!',false,true); toast('Digest completed!');
+          document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+          document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+          document.querySelector('[data-tab="result"]').classList.add('active');
+          document.getElementById('panel-result').classList.add('active');
+        }
+      }
+    }
+  } catch(e) { if(!receivedDone){addLog('Connection error: '+e.message,true);toast('Connection error',true);} }
+  btn.disabled=false; btn.textContent='Run Digest';
+}
+
+function addLog(msg,isErr=false,isOk=false){const el=document.getElementById('logArea');const cls=isErr?' class="err"':isOk?' class="ok"':'';el.innerHTML+=`<span${cls}>${esc(msg)}</span>\n`;el.scrollTop=el.scrollHeight;}
+function copyResult(){if(!currentMarkdown){toast('No result to copy',true);return;}navigator.clipboard.writeText(currentMarkdown).then(()=>toast('Copied!')).catch(()=>toast('Copy failed',true));}
+function downloadResult(){if(!currentMarkdown){toast('No result to download',true);return;}const blob=new Blob([currentMarkdown],{type:'text/markdown'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`digest-${currentId||'result'}.md`;a.click();URL.revokeObjectURL(a.href);}
+
+// History
+async function loadHistory(){
+  const list=document.getElementById('historyList');
+  try{const r=await fetch('/api/history');const items=await r.json();
+    if(items.length===0){list.innerHTML='<p class="empty">No history yet.</p>';return;}
+    list.innerHTML=items.map(item=>`<div class="history-item"><div class="meta">${item.createdAt?.slice(0,19).replace('T',' ')||item.id}<br><span>${item.stats?.selectedArticles||'?'} articles selected from ${item.stats?.totalArticles||'?'} fetched</span></div><div class="actions"><button class="btn btn-sm btn-outline" onclick="viewHistory('${item.id}')">View</button><button class="btn btn-sm btn-danger" onclick="deleteHistory('${item.id}')">Delete</button></div></div>`).join('');
+  }catch{list.innerHTML='<p class="empty">Failed to load history.</p>';}
+}
+async function viewHistory(id){
+  try{const r=await fetch('/api/history/'+encodeURIComponent(id));const data=await r.json();
+    currentMarkdown=data.markdown||'';currentId=id;
+    if(data.meta&&data.meta.articles){currentArticles=data.meta.articles;renderCards(data.meta.articles,data.meta.highlights||'');}else{renderMarkdown(currentMarkdown);}
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.querySelector('[data-tab="result"]').classList.add('active');document.getElementById('panel-result').classList.add('active');
+  }catch{toast('Failed to load',true);}
+}
+async function deleteHistory(id){if(!confirm('Delete this record?'))return;await fetch('/api/history/'+encodeURIComponent(id),{method:'DELETE'});loadHistory();toast('Deleted');}
+
+function toast(msg,isErr=false){const el=document.createElement('div');el.className='toast '+(isErr?'toast-err':'toast-ok');el.textContent=msg;document.body.appendChild(el);setTimeout(()=>el.remove(),3000);}
+</script>
+</body>
+</html>

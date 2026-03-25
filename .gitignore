@@ -1,0 +1,7 @@
+node_modules/
+data/config.json
+data/favorites.json
+data/history/
+.claude/
+*.log
+nul
