@@ -5,3 +5,4 @@ data/history/
 .claude/
 *.log
 nul
+start.bat
