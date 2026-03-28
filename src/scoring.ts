@@ -12,18 +12,18 @@ function buildScoringPrompt(articles: Array<{ index: number; title: string; desc
     `Index ${a.index}: [${a.sourceName}] ${a.title}\n${a.description.slice(0, 300)}`
   ).join('\n\n---\n\n');
 
-  return `你是一个技术内容策展人，正在为一份面向技术爱好者的每日精选摘要筛选文章。
+  return `你是一个技术内容策展人，正在为一份面向工程实践的每日精选摘要筛选文章。
 
 请对以下文章进行三个维度的评分（1-10 整数，10 分最高），并为每篇文章分配一个分类标签和提取 2-4 个关键词。
 
 ## 评分维度
 
-### 1. 相关性 (relevance) - 对技术/编程/AI从业者的价值（AI 相关内容优先）
-- 10: AI/LLM/深度学习领域的重大突破、新模型发布、重要研究
-- 8-9: AI 应用实践、AI 工具评测、AI 对行业的影响分析
-- 7-8: 对大部分技术从业者有价值的工程/编程内容
-- 4-6: 对特定技术领域有价值（安全、运维等非 AI 领域）
-- 1-3: 与技术行业关联不大
+### 1. 相关性 (relevance) - 对 AI/工程主线从业者的直接价值
+- 10: AI/LLM/Agent 的重大突破、重要模型发布、可复现工程方法
+- 8-9: 工程实践、开发工具、编程语言、系统设计、性能优化中的高价值实战内容
+- 6-7: 与主线相关但偏外围，迁移成本较高
+- 3-5: 仅弱相关或需要大量转译才可用于 AI 或工程实践
+- 1-2: 与主线收益关系很弱
 
 ### 2. 质量 (quality) - 文章本身的深度和写作质量
 - 10: 深度分析，原创洞见，引用丰富
@@ -48,6 +48,11 @@ function buildScoringPrompt(articles: Array<{ index: number; title: string; desc
 ## 关键词提取
 提取 2-4 个最能代表文章主题的关键词（用英文，简短，如 "Rust", "LLM", "database", "performance"）
 
+## 额外判定规则（非常重要）
+- 优先选择：AI / LLM / Agent / 工程实践 / 开发工具 / 编程语言 / 系统设计 / 性能优化
+- Apple 品牌新闻、纯数学推导、Windows/Win32 冷知识：如果不能直接迁移到 AI 或工程实践，请显著降低 relevance
+- 不要因为热点或标题党给出虚高 relevance
+
 ## 待评分文章
 
 ${articlesList}
@@ -65,6 +70,38 @@ ${articlesList}
     }
   ]
 }`;
+}
+
+const MAINLINE_TOPIC_PATTERN = /(ai|llm|agent|prompt|模型|工程|架构|系统设计|性能|优化|编程|语言|代码|开发工具|framework|database|后端|前端|infra|observability|security)/i;
+const APPLE_NEWS_PATTERN = /(apple|iphone|ipad|macbook|ios|macos)/i;
+const PURE_MATH_PATTERN = /(纯数学|数学推导|定理|证明|lemma|theorem|equation)/i;
+const WINDOWS_TRIVIA_PATTERN = /(windows|win32).*(冷知识|trivia|八卦|趣闻)|((冷知识|trivia).*(windows|win32))/i;
+const LIFESTYLE_PATTERN = /(生活方式|效率习惯|habit|lifestyle|self-help|时间管理)/i;
+
+function calculateLowValuePenalty(
+  article: Pick<Article, 'title' | 'sourceName' | 'description'>,
+  breakdown: Pick<ArticleScore, 'keywords'>,
+): number {
+  const text = `${article.title} ${article.sourceName} ${article.description} ${breakdown.keywords.join(' ')}`;
+  const hasMainlineSignal = MAINLINE_TOPIC_PATTERN.test(text);
+  let penalty = 0;
+
+  if (APPLE_NEWS_PATTERN.test(text) && !hasMainlineSignal) penalty += 0.7;
+  if (PURE_MATH_PATTERN.test(text) && !hasMainlineSignal) penalty += 0.7;
+  if (WINDOWS_TRIVIA_PATTERN.test(text) && !hasMainlineSignal) penalty += 0.7;
+  if (LIFESTYLE_PATTERN.test(text) && !hasMainlineSignal) penalty += 0.8;
+
+  return Math.min(1.6, penalty);
+}
+
+function calculateBaseScore(
+  article: Pick<Article, 'title' | 'sourceName' | 'description'>,
+  breakdown: ArticleScore,
+): number {
+  const raw = breakdown.relevance * SCORE_WEIGHTS.relevance
+            + breakdown.quality * SCORE_WEIGHTS.quality
+            + breakdown.timeliness * SCORE_WEIGHTS.timeliness;
+  return Math.max(0, raw - calculateLowValuePenalty(article, breakdown));
 }
 
 export async function scoreArticlesWithAI(
@@ -118,46 +155,47 @@ export function selectArticles(
   scores: Map<number, ArticleScore>,
   topN: number,
 ): { selected: Array<Article & { score: number; breakdown: ArticleScore; isWildcard: boolean }> } {
-  // 1. Attach scores and apply threshold elimination
-  const candidates = articles
+  const allCandidates = articles
     .map((article, index) => {
       const s = scores.get(index) || { relevance: 5, quality: 5, timeliness: 5, category: 'other' as CategoryId, keywords: [] };
       return { ...article, index, breakdown: s };
-    })
+    });
+
+  const candidates = allCandidates
     .filter(a =>
       a.breakdown.quality >= SCORE_THRESHOLDS.quality &&
       a.breakdown.relevance >= SCORE_THRESHOLDS.relevance &&
       a.breakdown.timeliness >= SCORE_THRESHOLDS.timeliness
     );
 
-  // 2. Calculate weighted score for each
   const withScore = candidates.map(a => ({
     ...a,
-    score: a.breakdown.relevance * SCORE_WEIGHTS.relevance
-         + a.breakdown.quality * SCORE_WEIGHTS.quality
-         + a.breakdown.timeliness * SCORE_WEIGHTS.timeliness,
+    score: calculateBaseScore(a, a.breakdown),
     isWildcard: false,
   }));
 
-  // 3. Find wildcard candidates (relevance < 5, quality >= 7)
-  const wildcardCandidates = withScore
-    .filter(a => a.breakdown.relevance < WILDCARD_RELEVANCE_MAX && a.breakdown.quality >= WILDCARD_QUALITY_MIN)
+  const wildcardCandidates = allCandidates
+    .filter(a =>
+      a.breakdown.relevance <= WILDCARD_RELEVANCE_MAX &&
+      a.breakdown.quality >= WILDCARD_QUALITY_MIN &&
+      a.breakdown.timeliness >= SCORE_THRESHOLDS.timeliness
+    )
+    .map(a => ({
+      ...a,
+      score: calculateBaseScore(a, a.breakdown),
+      isWildcard: false,
+    }))
     .sort((a, b) => b.score - a.score);
 
-  // 4. Soft quota selection for topN - 1 slots
   const normalSlots = topN - 1;
   const selected: typeof withScore = [];
   const categoryCount = new Map<CategoryId, number>();
-  // Work on a copy sorted by score
   const remaining = [...withScore].sort((a, b) => b.score - a.score);
 
   while (selected.length < normalSlots && remaining.length > 0) {
-    // Recalculate effective scores with soft quota discount
     for (const a of remaining) {
       const count = categoryCount.get(a.breakdown.category) || 0;
-      const base = a.breakdown.relevance * SCORE_WEIGHTS.relevance
-                 + a.breakdown.quality * SCORE_WEIGHTS.quality
-                 + a.breakdown.timeliness * SCORE_WEIGHTS.timeliness;
+      const base = calculateBaseScore(a, a.breakdown);
       a.score = base * (count >= SOFT_QUOTA_MAX ? SOFT_QUOTA_DISCOUNT : 1);
     }
     remaining.sort((a, b) => b.score - a.score);
@@ -167,11 +205,20 @@ export function selectArticles(
     categoryCount.set(pick.breakdown.category, (categoryCount.get(pick.breakdown.category) || 0) + 1);
   }
 
-  // 5. Fill wildcard slot
   const selectedIndices = new Set(selected.map(a => a.index));
   const wildcard = wildcardCandidates.find(a => !selectedIndices.has(a.index));
+  const bestRemainingMainline = remaining.find(a =>
+    !selectedIndices.has(a.index) &&
+    a.breakdown.relevance > WILDCARD_RELEVANCE_MAX
+  );
+  const wildcardShouldYield = Boolean(
+    wildcard &&
+    bestRemainingMainline &&
+    (bestRemainingMainline.breakdown.relevance - wildcard.breakdown.relevance >= 2) &&
+    (bestRemainingMainline.score >= wildcard.score)
+  );
 
-  if (wildcard) {
+  if (wildcard && !wildcardShouldYield) {
     wildcard.isWildcard = true;
     selected.push(wildcard);
   } else if (remaining.length > 0) {

@@ -83,11 +83,11 @@ export interface DigestConfig {
 export type SendEvent = (type: string, data: Record<string, unknown>) => void;
 
 export const SCORE_WEIGHTS = { relevance: 0.4, quality: 0.4, timeliness: 0.2 } as const;
-export const SCORE_THRESHOLDS = { quality: 4, relevance: 3, timeliness: 2 } as const;
+export const SCORE_THRESHOLDS = { quality: 5, relevance: 5, timeliness: 3 } as const;
 export const SOFT_QUOTA_MAX = 5;
 export const SOFT_QUOTA_DISCOUNT = 0.6;
-export const WILDCARD_RELEVANCE_MAX = 5;
-export const WILDCARD_QUALITY_MIN = 7;
+export const WILDCARD_RELEVANCE_MAX = 4;
+export const WILDCARD_QUALITY_MIN = 8;
 
 export const FEED_FETCH_TIMEOUT_MS = 15_000;
 export const FEED_CONCURRENCY = 20;

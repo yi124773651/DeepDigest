@@ -1,16 +1,46 @@
 import { readdir, readFile, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { DigestConfig, ScoredArticle, SendEvent } from './src/types';
-import { loadConfig, saveConfig, HISTORY_DIR, DATA_DIR } from './src/config';
+import {
+  loadConfig,
+  saveConfig,
+  HISTORY_DIR,
+  DATA_DIR,
+  mergeConfigUpdate,
+  sanitizeConfigForClient,
+  sanitizeConfigForHistory,
+} from './src/config';
 import { RSS_FEEDS, fetchAllFeeds } from './src/feeds';
 import { scoreArticlesWithAI, selectArticles } from './src/scoring';
-import { scrapeSingle } from './src/scraper';
+import { closeBrowser, scrapeSingle } from './src/scraper';
 import { summarizeSingle, generateHighlights } from './src/summarizer';
 import type { SummaryResult } from './src/summarizer';
 import { generateDigestReport } from './src/report';
+import { migrateHistoryRecord } from './src/history-migration';
+import { runWithCleanup } from './src/server-utils';
 
 const PORT = Number(process.env.PORT) || 3000;
 const indexHtmlPath = join(import.meta.dir, 'public', 'index.html');
+let isShuttingDown = false;
+
+async function closeBrowserSafely(): Promise<void> {
+  await closeBrowser().catch(() => {});
+}
+
+function registerProcessCleanup(): void {
+  if (isShuttingDown) return;
+
+  const handleShutdown = () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    void closeBrowserSafely().finally(() => process.exit(0));
+  };
+
+  process.once('SIGINT', handleShutdown);
+  process.once('SIGTERM', handleShutdown);
+}
+
+registerProcessCleanup();
 
 // ============================================================================
 // Digest Pipeline
@@ -111,7 +141,7 @@ async function runDigest(config: DigestConfig, sendEvent: SendEvent): Promise<vo
   await mkdir(HISTORY_DIR, { recursive: true });
   await writeFile(join(HISTORY_DIR, `${id}.md`), report);
   await writeFile(join(HISTORY_DIR, `${id}.json`), JSON.stringify({
-    id, createdAt: new Date().toISOString(), config,
+    id, createdAt: new Date().toISOString(), config: sanitizeConfigForHistory(config),
     articles: finalArticles,
     highlights,
     stats: {
@@ -148,7 +178,8 @@ async function listHistory(): Promise<Array<{ id: string; createdAt: string; sta
 async function getHistory(id: string): Promise<{ meta: Record<string, unknown>; markdown: string } | null> {
   try {
     const safeId = id.replace(/[^a-zA-Z0-9\-T]/g, '');
-    const meta = JSON.parse(await readFile(join(HISTORY_DIR, `${safeId}.json`), 'utf-8'));
+    const rawMeta = JSON.parse(await readFile(join(HISTORY_DIR, `${safeId}.json`), 'utf-8')) as Record<string, unknown>;
+    const meta = migrateHistoryRecord(rawMeta);
     const markdown = await readFile(join(HISTORY_DIR, `${safeId}.md`), 'utf-8');
     return { meta, markdown };
   } catch {
@@ -220,12 +251,13 @@ Bun.serve({
 
     if (path === '/api/config' && req.method === 'GET') {
       const config = await loadConfig();
-      return jsonResponse(config);
+      return jsonResponse(sanitizeConfigForClient(config));
     }
 
     if (path === '/api/config' && req.method === 'POST') {
       const body = await req.json() as Partial<DigestConfig>;
-      await saveConfig(body);
+      const saved = await loadConfig();
+      await saveConfig(mergeConfigUpdate(saved, body));
       return jsonResponse({ ok: true });
     }
 
@@ -256,11 +288,16 @@ Bun.serve({
             } catch { /* stream closed */ }
           };
 
-          try {
-            await runDigest(config, sendEvent);
-          } catch (err) {
-            sendEvent('error', { message: err instanceof Error ? err.message : String(err) });
-          }
+          await runWithCleanup(
+            async () => {
+              try {
+                await runDigest(config, sendEvent);
+              } catch (err) {
+                sendEvent('error', { message: err instanceof Error ? err.message : String(err) });
+              }
+            },
+            closeBrowserSafely,
+          );
 
           controller.close();
         },

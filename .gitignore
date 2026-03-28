@@ -1,4 +1,5 @@
 node_modules/
+.worktrees/
 data/config.json
 data/favorites.json
 data/history/
