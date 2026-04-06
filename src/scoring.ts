@@ -225,5 +225,23 @@ export function selectArticles(
     selected.push(remaining[0]);
   }
 
+  // Backfill: when selected < topN, fill from below-threshold articles by score
+  if (selected.length < topN) {
+    const selectedIndicesAfterWildcard = new Set(selected.map(a => a.index));
+    const backfillCandidates = allCandidates
+      .filter(a => !selectedIndicesAfterWildcard.has(a.index))
+      .map(a => ({
+        ...a,
+        score: calculateBaseScore(a, a.breakdown),
+        isWildcard: false,
+      }))
+      .sort((a, b) => b.score - a.score);
+
+    for (const candidate of backfillCandidates) {
+      if (selected.length >= topN) break;
+      selected.push(candidate);
+    }
+  }
+
   return { selected };
 }
