@@ -37,6 +37,11 @@ export interface ArticleScore {
   keywords: string[];
 }
 
+export interface PyramidStructure {
+  core: string;
+  arguments: Array<{ point: string; evidence: string[] }>;
+}
+
 export interface ScoredArticle extends Article {
   score: number;
   scoreBreakdown: { relevance: number; quality: number; timeliness: number };
@@ -46,6 +51,7 @@ export interface ScoredArticle extends Article {
   oneLiner: string;
   summary: string;
   reason: string;
+  pyramid?: PyramidStructure;
   isWildcard: boolean;
   contentSource: 'full' | 'rss';
 }
@@ -68,6 +74,7 @@ export interface AISummaryResult {
     oneLiner: string;
     summary: string;
     reason: string;
+    pyramid?: PyramidStructure;
   }>;
 }
 

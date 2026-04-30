@@ -122,6 +122,16 @@ input:focus,select:focus{border-color:var(--accent)}
 .modal-body p{margin:8px 0}
 .modal-body code{background:var(--surface2);padding:2px 5px;border-radius:3px;font-size:.85em}
 .modal-reason{margin-top:16px;padding-top:12px;border-top:1px solid var(--border);font-style:italic;font-size:.85rem;color:var(--text2)}
+.pyramid-tree{margin-top:16px;padding:14px 18px;background:var(--surface2);border-radius:var(--radius);border:1px solid var(--border)}
+.pyramid-core{font-weight:700;font-size:.95rem;color:var(--accent);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.pyramid-args{list-style:none;padding:0;margin:0}
+.pyramid-args>li{position:relative;padding-left:20px;margin-bottom:8px}
+.pyramid-args>li::before{content:'├─';position:absolute;left:0;color:var(--text2);font-family:monospace;font-size:.85rem}
+.pyramid-args>li:last-child::before{content:'└─'}
+.pyramid-point{font-weight:600;font-size:.88rem;color:var(--text);margin-bottom:2px}
+.pyramid-evidence{list-style:none;padding:0;margin:2px 0 0 20px}
+.pyramid-evidence li{font-size:.82rem;color:var(--text2);padding-left:16px;position:relative;line-height:1.5}
+.pyramid-evidence li::before{content:'└';position:absolute;left:0;color:var(--border);font-family:monospace;font-size:.8rem}
 .modal-actions{display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)}
 .card-reason{font-style:italic;font-size:.82rem;color:var(--text2);margin-top:10px;padding-left:12px;border-left:2px solid var(--yellow)}
 .card-keywords{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}
@@ -411,6 +421,28 @@ function openFavDetail(id) {
   openDetailForArticle(fav.article, fav.id);
 }
 
+// ============ Pyramid Renderer ============
+function renderPyramid(pyramid) {
+  if (!pyramid || !pyramid.core || !pyramid.arguments || pyramid.arguments.length === 0) return '';
+  let html = '<div class="pyramid-tree">';
+  html += `<div class="pyramid-core">🔺 ${esc(pyramid.core)}</div>`;
+  html += '<ul class="pyramid-args">';
+  for (const arg of pyramid.arguments) {
+    html += '<li>';
+    html += `<div class="pyramid-point">${esc(arg.point)}</div>`;
+    if (arg.evidence && arg.evidence.length > 0) {
+      html += '<ul class="pyramid-evidence">';
+      for (const ev of arg.evidence) {
+        html += `<li>${esc(ev)}</li>`;
+      }
+      html += '</ul>';
+    }
+    html += '</li>';
+  }
+  html += '</ul></div>';
+  return html;
+}
+
 // ============ Modal ============
 function openDetailForArticle(a, favId) {
   if (!a) return;
@@ -425,6 +457,7 @@ function openDetailForArticle(a, favId) {
   if (a.contentSource === 'rss') html += `<span style="color:var(--yellow)">⚠️ RSS摘要</span>`;
   html += `</div>`;
   html += `<div class="modal-body">${renderSummaryMd(a.summary)}</div>`;
+  if (a.pyramid) html += renderPyramid(a.pyramid);
   if (a.reason) html += `<div class="modal-reason">💡 ${esc(a.reason)}</div>`;
   if (a.keywords && a.keywords.length > 0) html += `<div class="card-keywords" style="margin-top:12px">${a.keywords.map(k => `<span>${esc(k)}</span>`).join('')}</div>`;
   // Actions

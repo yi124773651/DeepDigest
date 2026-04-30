@@ -118,6 +118,7 @@ async function runDigest(config: DigestConfig, sendEvent: SendEvent): Promise<vo
       scoreBreakdown: { relevance: a.breakdown.relevance, quality: a.breakdown.quality, timeliness: a.breakdown.timeliness },
       category: a.breakdown.category, keywords: a.breakdown.keywords || [],
       titleZh: sm.titleZh, oneLiner: sm.oneLiner, summary: sm.summary, reason: sm.reason,
+      pyramid: sm.pyramid,
       isWildcard: a.isWildcard,
       contentSource: sm.contentSource,
     };

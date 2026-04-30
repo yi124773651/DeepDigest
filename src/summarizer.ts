@@ -1,4 +1,4 @@
-import type { Article, AISummaryResult, DigestConfig, ScoredArticle, SendEvent } from './types';
+import type { Article, AISummaryResult, DigestConfig, ScoredArticle, SendEvent, PyramidStructure } from './types';
 import { AI_BATCH_SIZE, MAX_CONCURRENT_AI } from './types';
 import { callAI, parseJsonResponse } from './ai-client';
 import type { ScrapeResult } from './scraper';
@@ -44,6 +44,14 @@ function buildSummaryPrompt(
 
 4. **推荐理由** (reason): 1句话说明"为什么值得读"，聚焦于这篇文章能给读者带来什么独特价值。
 
+5. **金字塔结构** (pyramid): 【必填，不可省略】提取文章的论证金字塔，用于生成思维导图。JSON 格式：
+   - core: 核心结论（10字以内，精炼概括）
+   - arguments: 2-3 个关键论点，每个包含：
+     - point: 论点概述（15字以内）
+     - evidence: 1-2 条支撑证据/数据（每条20字以内）
+   注意：每个字段必须极度精简，因为会用于生成 Mermaid 思维导图，文字过长会导致排版溢出。
+   ⚠️ pyramid 字段是必须的，每篇文章都必须包含，绝对不能省略！
+
 ${langInstruction}
 
 分析要求：
@@ -57,7 +65,7 @@ ${langInstruction}
 
 ${articlesList}
 
-请严格按 JSON 格式返回，summary 字段包含完整的 Markdown 格式文本：
+请严格按 JSON 格式返回，每个 result 必须包含所有 6 个字段（index, titleZh, oneLiner, summary, reason, pyramid），缺一不可：
 {
   "results": [
     {
@@ -65,7 +73,14 @@ ${articlesList}
       "titleZh": "中文翻译的标题",
       "oneLiner": "一句话核心结论",
       "summary": "**核心结论**：...\\n\\n**背景与动机**：\\n- ...\\n\\n**关键洞察**：\\n- ...\\n\\n**创新与独特性**：\\n- ...\\n\\n**局限与反思**：\\n- ...",
-      "reason": "推荐理由..."
+      "reason": "推荐理由...",
+      "pyramid": {
+        "core": "核心结论",
+        "arguments": [
+          { "point": "论点1", "evidence": ["证据1a", "证据1b"] },
+          { "point": "论点2", "evidence": ["证据2a"] }
+        ]
+      }
     }
   ]
 }`;
@@ -78,7 +93,41 @@ function getSystemPrompt(lang: 'zh' | 'en'): string {
   return lang === 'zh' ? SYSTEM_PROMPT_ZH : SYSTEM_PROMPT_EN;
 }
 
-export type SummaryResult = { titleZh: string; oneLiner: string; summary: string; reason: string; contentSource: 'full' | 'rss' };
+export type SummaryResult = { titleZh: string; oneLiner: string; summary: string; reason: string; pyramid?: PyramidStructure; contentSource: 'full' | 'rss' };
+
+/**
+ * Build a fallback pyramid from summary text when LLM doesn't return one.
+ * Extracts key insights from the markdown-formatted summary.
+ */
+function buildFallbackPyramid(oneLiner: string, summary: string): PyramidStructure | undefined {
+  if (!oneLiner && !summary) return undefined;
+  const core = (oneLiner || summary.slice(0, 30)).slice(0, 30);
+
+  // Try to extract "关键洞察" or "**关键洞察**" section bullet points
+  const insightMatch = summary.match(/\*\*关键洞察\*\*[：:]\s*\n([\s\S]*?)(?=\n\*\*|$)/);
+  const bullets: string[] = [];
+  if (insightMatch) {
+    const lines = insightMatch[1].split('\n').filter(l => l.trim().startsWith('-'));
+    for (const line of lines.slice(0, 3)) {
+      bullets.push(line.replace(/^-\s*/, '').slice(0, 40));
+    }
+  }
+
+  // If no insights found, try generic bullet extraction
+  if (bullets.length === 0) {
+    const allBullets = summary.split('\n').filter(l => l.trim().startsWith('-'));
+    for (const line of allBullets.slice(0, 3)) {
+      bullets.push(line.replace(/^-\s*/, '').slice(0, 40));
+    }
+  }
+
+  if (bullets.length === 0) return undefined;
+
+  return {
+    core,
+    arguments: bullets.map(b => ({ point: b.slice(0, 15), evidence: [b] })),
+  };
+}
 
 // Summarize a single article (used by pipeline)
 export async function summarizeSingle(
@@ -96,7 +145,9 @@ export async function summarizeSingle(
     const parsed = parseJsonResponse<AISummaryResult>(responseText);
     if (parsed.results?.[0]) {
       const r = parsed.results[0];
-      return { titleZh: r.titleZh || '', oneLiner: r.oneLiner || '', summary: r.summary || '', reason: r.reason || '', contentSource };
+      const pyramid = r.pyramid || buildFallbackPyramid(r.oneLiner || '', r.summary || '');
+      if (!r.pyramid) console.warn(`[pyramid] MISSING from LLM for "${article.title}", using fallback: ${!!pyramid}`);
+      return { titleZh: r.titleZh || '', oneLiner: r.oneLiner || '', summary: r.summary || '', reason: r.reason || '', pyramid, contentSource };
     }
   } catch { /* fallback below */ }
   return { titleZh: article.title, oneLiner: article.title, summary: content.slice(0, 200), reason: '', contentSource };
@@ -107,8 +158,8 @@ export async function summarizeArticles(
   scrapeResults: Map<number, ScrapeResult>,
   config: DigestConfig,
   sendEvent?: SendEvent,
-): Promise<Map<number, { titleZh: string; oneLiner: string; summary: string; reason: string; contentSource: 'full' | 'rss' }>> {
-  const summaries = new Map<number, { titleZh: string; oneLiner: string; summary: string; reason: string; contentSource: 'full' | 'rss' }>();
+): Promise<Map<number, SummaryResult>> {
+  const summaries = new Map<number, SummaryResult>();
 
   const indexed = articles.map(a => {
     const scrape = scrapeResults.get(a.index);
@@ -139,6 +190,7 @@ export async function summarizeArticles(
               oneLiner: result.oneLiner || '',
               summary: result.summary || '',
               reason: result.reason || '',
+              pyramid: result.pyramid || buildFallbackPyramid(result.oneLiner || '', result.summary || ''),
               contentSource: item?.contentSource || 'rss',
             });
           }

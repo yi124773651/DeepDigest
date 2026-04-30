@@ -1,4 +1,4 @@
-import type { ScoredArticle, CategoryId } from './types';
+import type { ScoredArticle, CategoryId, PyramidStructure } from './types';
 import { CATEGORY_META } from './types';
 
 // ============================================================================
@@ -75,6 +75,50 @@ function generateTagCloud(articles: ScoredArticle[]): string {
 }
 
 // ============================================================================
+// Pyramid Mindmap
+// ============================================================================
+
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.slice(0, maxLen - 1) + '…';
+}
+
+function escapeMermaidText(text: string): string {
+  // Mermaid mindmap nodes can't contain certain chars that break parsing
+  return text.replace(/[()[\]{}"`]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function generatePyramidMindmap(pyramid: PyramidStructure): string {
+  const core = escapeMermaidText(truncate(pyramid.core, 30));
+  let mindmap = '```mermaid\nmindmap\n';
+  mindmap += `  root((${core}))\n`;
+  for (const arg of pyramid.arguments) {
+    const point = escapeMermaidText(truncate(arg.point, 30));
+    mindmap += `    ${point}\n`;
+    if (arg.evidence && Array.isArray(arg.evidence)) {
+      for (const ev of arg.evidence) {
+        const evidence = escapeMermaidText(truncate(ev, 35));
+        mindmap += `      ${evidence}\n`;
+      }
+    }
+  }
+  mindmap += '```\n';
+  return mindmap;
+}
+
+function isValidPyramid(pyramid: unknown): pyramid is PyramidStructure {
+  if (!pyramid || typeof pyramid !== 'object') return false;
+  const p = pyramid as Record<string, unknown>;
+  if (typeof p.core !== 'string' || !p.core) return false;
+  if (!Array.isArray(p.arguments) || p.arguments.length === 0) return false;
+  return p.arguments.every((arg: unknown) => {
+    if (!arg || typeof arg !== 'object') return false;
+    const a = arg as Record<string, unknown>;
+    return typeof a.point === 'string' && Array.isArray(a.evidence);
+  });
+}
+
+// ============================================================================
 // Report Generation
 // ============================================================================
 
@@ -101,7 +145,9 @@ export function generateDigestReport(articles: ScoredArticle[], highlights: stri
       report += `${medal} **${a.titleZh || a.title}**${wildcardMarker}\n\n`;
       report += `[${a.title}](${a.link}) — ${a.sourceName} · ${humanizeTime(a.pubDate)} · ${catMeta.emoji} ${catMeta.label} · ⭐ ${a.score.toFixed(1)}/10\n\n`;
       report += `> ${a.oneLiner}\n\n`;
-      report += `<details><summary>📖 详细摘要</summary>\n\n${a.summary}\n\n</details>\n\n`;
+      report += `<details><summary>📖 详细摘要</summary>\n\n`;
+      if (isValidPyramid(a.pyramid)) report += `${generatePyramidMindmap(a.pyramid)}\n`;
+      report += `${a.summary}\n\n</details>\n\n`;
       if (a.reason) report += `💡 **为什么值得读**: ${a.reason}\n\n`;
       if (a.contentSource === 'rss') report += `*⚠️ 摘要基于 RSS 摘要生成*\n\n`;
       if (a.keywords.length > 0) report += `🏷️ ${a.keywords.join(', ')}\n\n`;
@@ -142,7 +188,9 @@ export function generateDigestReport(articles: ScoredArticle[], highlights: stri
       report += `### ${globalIndex}. ${a.titleZh || a.title}${wildcardMarker}\n\n`;
       report += `[${a.title}](${a.link}) — **${a.sourceName}** · ${humanizeTime(a.pubDate)} · ⭐ ${a.score.toFixed(1)}/10\n\n`;
       report += `> ${a.oneLiner}\n\n`;
-      report += `<details><summary>📖 详细摘要</summary>\n\n${a.summary}\n\n</details>\n\n`;
+      report += `<details><summary>📖 详细摘要</summary>\n\n`;
+      if (isValidPyramid(a.pyramid)) report += `${generatePyramidMindmap(a.pyramid)}\n`;
+      report += `${a.summary}\n\n</details>\n\n`;
       if (a.reason) report += `💡 **为什么值得读**: ${a.reason}\n\n`;
       if (a.contentSource === 'rss') report += `*⚠️ 摘要基于 RSS 摘要生成*\n\n`;
       if (a.keywords.length > 0) report += `🏷️ ${a.keywords.join(', ')}\n\n`;
